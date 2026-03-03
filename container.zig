@@ -49,22 +49,32 @@ const ChildArg = struct {
     }
 };
 
-fn child(config: ContainerOpts) usize {
-    log.info("Starting container with command {} and args {}", config.path, config.argv);
+fn child(arg: usize) callconv(.c) u8  {
+    const config: *ContainerOpts = @ptrFromInt(arg);
+    log.info("Starting container with command `{s}` and args `{s}`", .{config.path, config.mount_dir});
     return 0;
 }
 
 fn generateChildProcess(config: ContainerOpts) !void {
     
     const stack_size:usize = 8 * 1024;
-    const stack_memoty = try std.heap.page_allocator.alloc(u8, stack_size);
+    const stack_memory = try std.heap.page_allocator.alloc(u8, stack_size);
     defer std.heap.page_allocator.free(stack_memory);
 
     const stack_ptr = @intFromPtr(stack_memory.ptr + stack_size);
-    const clone_flags = linux.CLONE.VM | linux.SIG.CHLD;
+    const clone_flags = std.os.linux.CLONE.VM | std.os.linux.SIG.CHLD | std.os.linux.CLONE.NEWUTS;
 
-    const 
-
+    const pid = std.os.linux.clone(child, stack_ptr, clone_flags, @intFromPtr(&config), null, 0, null);
+    const e = std.os.linux.E.init(pid);
+    if (e != .SUCCESS) {
+       log.err("Clone failed: {}", .{e});
+       return error.SyscallError;
+    }
+    const wait_flags = 0;
+    var status: u32 = undefined;
+    const trunc:u32 = @truncate(pid);
+    _ = std.os.linux.waitpid(@intCast(trunc), &status, wait_flags);
+    log.info("Parent: pid: {}, pid: {}, ppid: {}", .{pid, std.os.linux.getpid(), std.os.linux.getppid()});
 }
 
 fn sendFlag(fd: i32, val: bool) !void {
@@ -135,7 +145,7 @@ const Container = struct {
     }
 
     pub fn create(self: Container) !void {
-        _ = self;
+        try generateChildProcess(self.config);
         log.debug("Creation finsihed", .{});
     }
 
