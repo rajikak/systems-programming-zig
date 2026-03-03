@@ -21,7 +21,8 @@ const Syscalls = struct {
 
 pub fn main() !void {
     const args = try parseArgs();
-    log.info(" Args {{ debug: {}, command: {s}, uid: {d}, mount_dir: {s} }}", .{ args.debug, args.command, args.uid, args.mount_dir });
+    const uts:posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Args {{ debug: {}, command: {s}, uid: {d}, mount_dir: {s} }}", .{ uts.nodename, args.debug, args.command, args.uid, args.mount_dir });
 
     try start(args);
     try exitWithRetCode(null);
@@ -35,7 +36,8 @@ fn start(args: Args) !void {
         log.err("Error while creating the container: {any}", .{err});
         return error.ContainerCreationError;
     };
-    log.debug("Finished, cleaning & exit", .{});
+    const uts:posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Finished, cleaning & exit", .{uts.nodename});
     try container.cleanExit();
 }
 
@@ -68,7 +70,16 @@ fn generateHostName() ![]u8 {
 fn child(arg: usize) callconv(.c) u8  {
     const config: *ContainerOpts = @ptrFromInt(arg);
     const cmd = config.args();
-    log.info(" Starting container with path: `{s}`, command: `{s}, host name: `{s}`", .{config.path, cmd, config.host_name});
+
+    const res = std.os.linux.syscall2(.sethostname, @intFromPtr(config.host_name.ptr), config.host_name.len);
+    const e = std.os.linux.E.init(res);
+    if(e != .SUCCESS) {
+        log.err("Error setting hostname: {}", .{e});
+        return 0;
+    }
+
+    const uts:posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Starting container with path: `{s}`, command: `{s}, host name: `{s}`", .{uts.nodename, config.path, cmd, config.host_name});
     return 0;
 }
 
@@ -91,7 +102,8 @@ fn generateChildProcess(config: ContainerOpts) !void {
     var status: u32 = undefined;
     const trunc:u32 = @truncate(pid);
     _ = std.os.linux.waitpid(@intCast(trunc), &status, wait_flags);
-    log.info(" Parent: child_pid: {}, pid: {}, ppid: {}", .{pid, std.os.linux.getpid(), std.os.linux.getppid()});
+    const uts:posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Parent: child_pid: {}, pid: {}, ppid: {}", .{uts.nodename, pid, std.os.linux.getpid(), std.os.linux.getppid()});
 }
 
 fn sendFlag(fd: i32, val: bool) !void {
@@ -102,7 +114,8 @@ fn sendFlag(fd: i32, val: bool) !void {
         log.err("Cannot send boolean through socket: {}", .{err});
         return error.SyscallError;
     };
-    log.info("Send flag sent, {}, value: {}", .{ res, val });
+    const uts:posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Send flag sent, {}, value: {}", .{ uts.nodename, res, val });
 }
 
 fn receiveFlag(fd: i32) !bool {
@@ -111,7 +124,8 @@ fn receiveFlag(fd: i32) !bool {
         log.err("Cannot receive boilean from socket: {}", err);
         return error.SyscallError;
     };
-    log.info("Received flag, {}, {}", .{ res, buf });
+    const uts:posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Received flag, {}, {}", .{ uts.nodename, res, buf });
 }
 
 fn generateSocketPair(fd: *[2]i32) !void {
@@ -142,7 +156,8 @@ fn kernelVersion() !void {
     const major = try std.fmt.bufPrint(&buf, "{s}.{s}", .{ splits.first(), splits.next().? });
     const vf = try std.fmt.parseFloat(f64, major);
 
-    log.debug("Linux release: {s}, {s}, {d}", .{ host.release, major, vf });
+    const uts: posix.utsname = posix.uname();
+    log.debug("[hostname: {s}] Linux release: {s}, {s}, {d}", .{ uts.nodename, host.release, major, vf });
 
     if (vf < minimu_kernel_version) {
         return error.KernelVersionNotSupported;
@@ -163,7 +178,8 @@ const Container = struct {
 
     pub fn create(self: Container) !void {
         try generateChildProcess(self.config);
-        log.debug("Creation finsihed", .{});
+        const uts:posix.utsname = posix.uname();
+        log.debug("[nodename: {s}] Creation finsihed", .{uts.nodename});
     }
 
     pub fn cleanExit(self: Container) !void {
@@ -177,7 +193,8 @@ const Container = struct {
         const read_fd = self.fd[1];
         std.posix.close(read_fd);
 
-        log.debug("Cleaning container", .{});
+        const uts: posix.utsname = posix.uname();
+        log.debug("[hostname: {s}] Cleaning container", .{uts.nodename});
     }
 };
 
@@ -251,12 +268,14 @@ const Args = struct {
 };
 
 fn exitWithRetCode(errorCode: ?ErrCode) !void {
+    const uts:posix.utsname = posix.uname();
     if (errorCode) |err| {
         const code = ErrCode.errCode(err);
-        log.debug("Error on exit: {}, code: {}", .{ err, code });
+        log.debug("[hostname: {s}] Error on exit: {}, code: {}", .{ uts.nodename, err, code });
         std.posix.exit(code);
     } else {
-        log.debug("Exit without any error, returning 0", .{});
+
+        log.debug("[hostname: {s}] Exit without any error, returning 0", .{uts.nodename});
         std.posix.exit(0);
     }
 }
