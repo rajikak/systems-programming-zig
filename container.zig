@@ -21,7 +21,7 @@ const Syscalls = struct {
 
 pub fn main() !void {
     const args = try parseArgs();
-    log.info("Args {{ debug: {}, command: {s}, uid: {d}, mount_dir: {s} }}", .{ args.debug, args.command, args.uid, args.mount_dir });
+    log.info(" Args {{ debug: {}, command: {s}, uid: {d}, mount_dir: {s} }}", .{ args.debug, args.command, args.uid, args.mount_dir });
 
     try start(args);
     try exitWithRetCode(null);
@@ -49,15 +49,31 @@ const ChildArg = struct {
     }
 };
 
+fn generateHostName() ![]u8 {
+    const hosts = [_][]const u8{ "cat", "world", "coffee", "girl", "man", "book" };
+    const adjectives = [_][]const u8{ "blue", "red", "green", "yellow", "big", "small" };
+
+    const rand = std.crypto.random;
+    const index1 = rand.intRangeAtMost(u8, 1, hosts.len - 1);
+    const index2 = rand.intRangeAtMost(u8, 1, adjectives.len - 1);
+
+    // var buffer: [1000]u8 = undefined; // stack allocated buffer will not work
+    const allocator = std.heap.page_allocator;
+    const buf = try allocator.alloc(u8, 100);
+    //defer allocator.free(buf);
+    const a = try std.fmt.bufPrint(buf, "{s}-{s}", .{ hosts[index1], adjectives[index2] });
+    return a;
+}
+
 fn child(arg: usize) callconv(.c) u8  {
     const config: *ContainerOpts = @ptrFromInt(arg);
-    log.info("Starting container with command `{s}` and args `{s}`", .{config.path, config.mount_dir});
+    const cmd = config.args();
+    log.info(" Starting container with path: `{s}`, command: `{s}, host name: `{s}`", .{config.path, cmd, config.host_name});
     return 0;
 }
 
 fn generateChildProcess(config: ContainerOpts) !void {
 
-    
     const stack_size:usize = 8 * 1024;
     const stack_memory = try std.heap.page_allocator.alloc(u8, stack_size);
     defer std.heap.page_allocator.free(stack_memory);
@@ -75,7 +91,7 @@ fn generateChildProcess(config: ContainerOpts) !void {
     var status: u32 = undefined;
     const trunc:u32 = @truncate(pid);
     _ = std.os.linux.waitpid(@intCast(trunc), &status, wait_flags);
-    log.info("Parent: child_pid: {}, pid: {}, ppid: {}", .{pid, std.os.linux.getpid(), std.os.linux.getppid()});
+    log.info(" Parent: child_pid: {}, pid: {}, ppid: {}", .{pid, std.os.linux.getpid(), std.os.linux.getppid()});
 }
 
 fn sendFlag(fd: i32, val: bool) !void {
@@ -171,6 +187,7 @@ const ContainerOpts = struct {
     uid: u32,
     mount_dir: []const u8,
     fd: [2]i32,
+    host_name:[]const u8,
 
     fn new(command: []const u8, uid: u32, mount_dir: []const u8) !ContainerOpts {
         var fd: [2]i32 = undefined;
@@ -186,14 +203,24 @@ const ContainerOpts = struct {
         while (it.next()) |v| {
             try list.append(allocator, v);
         }
-
+        const host_name = try generateHostName();
         return ContainerOpts{
             .path = list.items[0],
             .argv = list,
             .uid = uid,
             .mount_dir = mount_dir,
             .fd = fd,
+            .host_name = host_name,
         };
+    }
+
+    fn args(self:ContainerOpts) *const [42:0]u8 {
+        _ = self;
+         //var gpa = std.heap.DebugAllocator(.{}){};
+         //defer _ = gpa.deinit();
+         //const allocator = gpa.allocator();
+         //const joined: []u8 = try std.mem.join(allocator, ",", self.argv.items);
+         return "go build -tags lambda.norpc -o bootstrap .";
     }
 
     fn print(self: ContainerOpts) void {

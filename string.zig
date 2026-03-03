@@ -4,9 +4,9 @@ const std = @import("std");
 pub fn main() !void {
     //try testJoin2();
     //try random();
-    // const val = try concat();
-    // const val2 = try concat2();
-    //std.debug.print("concat: {s}:{s}\n", .{ val, val2 });
+     const val = try concat();
+     const val2 = try concat2();
+    std.debug.print("concat: {s}:{s}\n", .{ val, val2 });
     try mount();
 }
 
