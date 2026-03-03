@@ -56,6 +56,7 @@ fn child(arg: usize) callconv(.c) u8  {
 }
 
 fn generateChildProcess(config: ContainerOpts) !void {
+
     
     const stack_size:usize = 8 * 1024;
     const stack_memory = try std.heap.page_allocator.alloc(u8, stack_size);
@@ -74,7 +75,7 @@ fn generateChildProcess(config: ContainerOpts) !void {
     var status: u32 = undefined;
     const trunc:u32 = @truncate(pid);
     _ = std.os.linux.waitpid(@intCast(trunc), &status, wait_flags);
-    log.info("Parent: pid: {}, pid: {}, ppid: {}", .{pid, std.os.linux.getpid(), std.os.linux.getppid()});
+    log.info("Parent: child_pid: {}, pid: {}, ppid: {}", .{pid, std.os.linux.getpid(), std.os.linux.getppid()});
 }
 
 fn sendFlag(fd: i32, val: bool) !void {
@@ -225,10 +226,10 @@ const Args = struct {
 fn exitWithRetCode(errorCode: ?ErrCode) !void {
     if (errorCode) |err| {
         const code = ErrCode.errCode(err);
-        log.debug("Error on exit: {}, code: {}\n", .{ err, code });
+        log.debug("Error on exit: {}, code: {}", .{ err, code });
         std.posix.exit(code);
     } else {
-        log.debug("Exit without any error, returning 0\n", .{});
+        log.debug("Exit without any error, returning 0", .{});
         std.posix.exit(0);
     }
 }
