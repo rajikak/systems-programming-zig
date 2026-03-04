@@ -37,7 +37,7 @@ fn start(args: Args) !void {
         return error.ContainerCreationError;
     };
     const uts:posix.utsname = posix.uname();
-    log.info(" [hostname: {s}] Finished, cleaning & exit", .{uts.nodename});
+    log.info(" [hostname: {s}] Finished execution, cleaning & exit", .{uts.nodename});
     try container.cleanExit();
 }
 
@@ -80,6 +80,12 @@ fn child(arg: usize) callconv(.c) u8  {
 
     const uts:posix.utsname = posix.uname();
     log.info(" [hostname: {s}] Starting container with path: `{s}`, command: `{s}, host name: `{s}`", .{uts.nodename, config.path, cmd, config.host_name});
+
+    log.info(" [hostname: {s}] Setting mount points", .{uts.nodename});
+
+    const new_root = 
+    log.info(" [hostname: {s}] Mounting tmp directory {s}", .{uts.nodename});
+
     return 0;
 }
 
@@ -179,7 +185,7 @@ const Container = struct {
     pub fn create(self: Container) !void {
         try generateChildProcess(self.config);
         const uts:posix.utsname = posix.uname();
-        log.debug("[nodename: {s}] Creation finsihed", .{uts.nodename});
+        log.debug("[nodename: {s}] Container creation finsihed", .{uts.nodename});
     }
 
     pub fn cleanExit(self: Container) !void {
