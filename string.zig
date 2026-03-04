@@ -4,12 +4,29 @@ const std = @import("std");
 pub fn main() !void {
     //try testJoin2();
     //try random();
-     const val = try concat();
-     const val2 = try concat2();
-    std.debug.print("concat: {s}:{s}\n", .{ val, val2 });
-    try mount();
+    //const val = try concat();
+    //const val2 = try concat2();
+    //std.debug.print("concat: {s}:{s}\n", .{ val, val2 });
+    //try mount();
+    errHandling();
 }
 
+fn  errHandling() void {
+    const upper = 9;
+    const rand = std.crypto.random;
+    const index = rand.intRangeAtMost(u8, 1, upper);
+
+    var buffer: [20]u8 = undefined;
+    const res = std.fmt.bufPrintZ(&buffer, "/tmp/anvilci.{d}", .{index}) catch |err| {
+        std.debug.print("error: {}\n", .{err});
+        return;
+    };
+
+    std.debug.print("stat: {s}, {d}\n", .{ res, res.len });
+}
+
+
+// https://lwn.net/Articles/689856/
 fn mount() !void {
     const upper = 9;
     const rand = std.crypto.random;

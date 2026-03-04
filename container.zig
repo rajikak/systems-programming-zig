@@ -21,7 +21,7 @@ const Syscalls = struct {
 
 pub fn main() !void {
     const args = try parseArgs();
-    const uts:posix.utsname = posix.uname();
+    const uts: posix.utsname = posix.uname();
     log.info(" [hostname: {s}] Args {{ debug: {}, command: {s}, uid: {d}, mount_dir: {s} }}", .{ uts.nodename, args.debug, args.command, args.uid, args.mount_dir });
 
     try start(args);
@@ -36,18 +36,18 @@ fn start(args: Args) !void {
         log.err("Error while creating the container: {any}", .{err});
         return error.ContainerCreationError;
     };
-    const uts:posix.utsname = posix.uname();
+    const uts: posix.utsname = posix.uname();
     log.info(" [hostname: {s}] Finished execution, cleaning & exit", .{uts.nodename});
     try container.cleanExit();
 }
 
 const ChildArg = struct {
-    n:u8,
+    n: u8,
     buf: []const u8,
     config: ContainerOpts,
 
-    fn new(n:u8, buf: []const u8, config:ContainerOpts) ChildArg {
-        return ChildArg {.n = n, .buf = buf, .config = config};
+    fn new(n: u8, buf: []const u8, config: ContainerOpts) ChildArg {
+        return ChildArg{ .n = n, .buf = buf, .config = config };
     }
 };
 
@@ -67,31 +67,83 @@ fn generateHostName() ![]u8 {
     return a;
 }
 
-fn child(arg: usize) callconv(.c) u8  {
-    const config: *ContainerOpts = @ptrFromInt(arg);
-    const cmd = config.args();
+fn setUpContainerConfiguration(config: *ContainerOpts) void {
+    // set hostname
 
     const res = std.os.linux.syscall2(.sethostname, @intFromPtr(config.host_name.ptr), config.host_name.len);
     const e = std.os.linux.E.init(res);
-    if(e != .SUCCESS) {
+    if (e != .SUCCESS) {
         log.err("Error setting hostname: {}", .{e});
-        return 0;
+        return;
     }
 
-    const uts:posix.utsname = posix.uname();
-    log.info(" [hostname: {s}] Starting container with path: `{s}`, command: `{s}, host name: `{s}`", .{uts.nodename, config.path, cmd, config.host_name});
+    const cmd = config.args();
+    const uts: posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Starting container with path: `{s}`, command: `{s}, host_name: `{s}`", .{ uts.nodename, config.path, cmd, config.host_name });
+}
 
-    log.info(" [hostname: {s}] Setting mount points", .{uts.nodename});
+fn setUpContainerMountPoints(config: *ContainerOpts) void {
+    const uts: posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Setting mount point: {s}", .{ uts.nodename, config.mount_dir });
 
-    const new_root = 
-    log.info(" [hostname: {s}] Mounting tmp directory {s}", .{uts.nodename});
+    // https://man7.org/linux/man-pages/man2/pivot_root.2.html
+    // ensure the `new_root` and its parent mount don't have shared propagation(which will
+    // cause pivot_root to return an error) and prevent from propation of mount envents to
+    // the initial mount namespace
+
+    const mount_flags = std.os.linux.MS.REC | std.os.linux.MS.PRIVATE;
+    const root = "/";
+    const res = std.os.linux.syscall5(.mount, 0, @intFromPtr(root.ptr), 0, mount_flags, 0);
+    const e = std.os.linux.E.init(res);
+    if (e != .SUCCESS) {
+        log.err("Error using mount: {}", .{e});
+        return;
+    }
+
+    // ensure `new_root` is a mount point
+    const mode = 0o555;
+    const res1 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.new_root.ptr), mode);
+    const e1 = std.os.linux.E.init(res1);
+    if (e1 != .SUCCESS) {
+        log.err("Error creating the new_root: {s}, error: {}", .{config.new_root, e1});
+    }
+
+    //std.posix.mkdir(config.new_root, mode) catch |err| {
+    //    log.err("Error creating the new_root: {s}, error: {}", .{config.new_root, err});
+    //};
+
+    log.info(" [hostname: {s}] Mounting tmp directory: {s}", .{ uts.nodename, config.new_root });
+    //const mount_flags2 = std.os.linux.MS.BIND|std.os.linux.MS.PRIVATE;
+    const mount_flags2 = std.os.linux.MS.BIND;
+    const res2 = std.os.linux.syscall5(.mount, @intFromPtr(config.new_root.ptr), @intFromPtr(config.new_root.ptr), 0, mount_flags2, 0);
+    const e2 = std.os.linux.E.init(res2);
+    if (e2 != .SUCCESS) {
+        log.err("Error using mount: {}", .{e2});
+        return;
+    }
+
+    // create directory to which old root will be pivoted
+    log.info(" [hostname: {s}] creating put old: {s}", .{ uts.nodename, config.put_old });
+    const res3 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.put_old.ptr), mode);
+    const e3 = std.os.linux.E.init(res3);
+    if (e3 != .SUCCESS) {
+        log.err("Error creating the pivot_root path: {s}, error: {}", .{config.put_old, e3});
+    }
+
+    log.info(" [hostname: {s}] Pivoting root from: {s}, to: {s}", .{ uts.nodename, config.new_root, config.put_old });
+}
+
+fn child(arg: usize) callconv(.c) u8 {
+    const config: *ContainerOpts = @ptrFromInt(arg);
+
+    setUpContainerConfiguration(config);
+    setUpContainerMountPoints(config);
 
     return 0;
 }
 
 fn generateChildProcess(config: ContainerOpts) !void {
-
-    const stack_size:usize = 8 * 1024;
+    const stack_size: usize = 8 * 1024;
     const stack_memory = try std.heap.page_allocator.alloc(u8, stack_size);
     defer std.heap.page_allocator.free(stack_memory);
 
@@ -101,15 +153,15 @@ fn generateChildProcess(config: ContainerOpts) !void {
     const pid = std.os.linux.clone(child, stack_ptr, clone_flags, @intFromPtr(&config), null, 0, null);
     const e = std.os.linux.E.init(pid);
     if (e != .SUCCESS) {
-       log.err("Clone failed: {}", .{e});
-       return error.SyscallError;
+        log.err("Clone failed: {}", .{e});
+        return error.SyscallError;
     }
     const wait_flags = 0;
     var status: u32 = undefined;
-    const trunc:u32 = @truncate(pid);
+    const trunc: u32 = @truncate(pid);
     _ = std.os.linux.waitpid(@intCast(trunc), &status, wait_flags);
-    const uts:posix.utsname = posix.uname();
-    log.info(" [hostname: {s}] Parent: child_pid: {}, pid: {}, ppid: {}", .{uts.nodename, pid, std.os.linux.getpid(), std.os.linux.getppid()});
+    const uts: posix.utsname = posix.uname();
+    log.info(" [hostname: {s}] Parent: child_pid: {}, pid: {}, ppid: {}", .{ uts.nodename, pid, std.os.linux.getpid(), std.os.linux.getppid() });
 }
 
 fn sendFlag(fd: i32, val: bool) !void {
@@ -120,7 +172,7 @@ fn sendFlag(fd: i32, val: bool) !void {
         log.err("Cannot send boolean through socket: {}", .{err});
         return error.SyscallError;
     };
-    const uts:posix.utsname = posix.uname();
+    const uts: posix.utsname = posix.uname();
     log.info(" [hostname: {s}] Send flag sent, {}, value: {}", .{ uts.nodename, res, val });
 }
 
@@ -130,7 +182,7 @@ fn receiveFlag(fd: i32) !bool {
         log.err("Cannot receive boilean from socket: {}", err);
         return error.SyscallError;
     };
-    const uts:posix.utsname = posix.uname();
+    const uts: posix.utsname = posix.uname();
     log.info(" [hostname: {s}] Received flag, {}, {}", .{ uts.nodename, res, buf });
 }
 
@@ -184,7 +236,7 @@ const Container = struct {
 
     pub fn create(self: Container) !void {
         try generateChildProcess(self.config);
-        const uts:posix.utsname = posix.uname();
+        const uts: posix.utsname = posix.uname();
         log.debug("[nodename: {s}] Container creation finsihed", .{uts.nodename});
     }
 
@@ -210,7 +262,9 @@ const ContainerOpts = struct {
     uid: u32,
     mount_dir: []const u8,
     fd: [2]i32,
-    host_name:[]const u8,
+    host_name: []const u8,
+    new_root: []const u8,
+    put_old:[]const u8,
 
     fn new(command: []const u8, uid: u32, mount_dir: []const u8) !ContainerOpts {
         var fd: [2]i32 = undefined;
@@ -226,6 +280,14 @@ const ContainerOpts = struct {
         while (it.next()) |v| {
             try list.append(allocator, v);
         }
+
+        const index = std.crypto.random.intRangeAtMost(u32, 1, 1000);
+        var buffer2:[buf_size]u8 = undefined;
+        const new_root = try std.fmt.bufPrintZ(&buffer2, "{s}{d}", .{mount_dir, index});
+
+        var buffer3:[buf_size]u8 = undefined;
+        const put_old = try std.fmt.bufPrintZ(&buffer3, "{s}/oldrootfs", .{new_root});
+
         const host_name = try generateHostName();
         return ContainerOpts{
             .path = list.items[0],
@@ -234,16 +296,18 @@ const ContainerOpts = struct {
             .mount_dir = mount_dir,
             .fd = fd,
             .host_name = host_name,
+            .new_root = new_root, 
+            .put_old = put_old, 
         };
     }
 
-    fn args(self:ContainerOpts) *const [42:0]u8 {
+    fn args(self: ContainerOpts) *const [42:0]u8 {
         _ = self;
-         //var gpa = std.heap.DebugAllocator(.{}){};
-         //defer _ = gpa.deinit();
-         //const allocator = gpa.allocator();
-         //const joined: []u8 = try std.mem.join(allocator, ",", self.argv.items);
-         return "go build -tags lambda.norpc -o bootstrap .";
+        //var gpa = std.heap.DebugAllocator(.{}){};
+        //defer _ = gpa.deinit();
+        //const allocator = gpa.allocator();
+        //const joined: []u8 = try std.mem.join(allocator, ",", self.argv.items);
+        return "go build -tags lambda.norpc -o bootstrap .";
     }
 
     fn print(self: ContainerOpts) void {
@@ -274,13 +338,12 @@ const Args = struct {
 };
 
 fn exitWithRetCode(errorCode: ?ErrCode) !void {
-    const uts:posix.utsname = posix.uname();
+    const uts: posix.utsname = posix.uname();
     if (errorCode) |err| {
         const code = ErrCode.errCode(err);
         log.debug("[hostname: {s}] Error on exit: {}, code: {}", .{ uts.nodename, err, code });
         std.posix.exit(code);
     } else {
-
         log.debug("[hostname: {s}] Exit without any error, returning 0", .{uts.nodename});
         std.posix.exit(0);
     }

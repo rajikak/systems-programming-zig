@@ -6,3 +6,4 @@ zig-out/
 *.swo
 a.out
 string
+container
