@@ -69,7 +69,6 @@ fn generateHostName() ![]u8 {
 
 fn setUpContainerConfiguration(config: *ContainerOpts) void {
     // set hostname
-
     const res = std.os.linux.syscall2(.sethostname, @intFromPtr(config.host_name.ptr), config.host_name.len);
     const e = std.os.linux.E.init(res);
     if (e != .SUCCESS) {
@@ -83,9 +82,18 @@ fn setUpContainerConfiguration(config: *ContainerOpts) void {
 }
 
 fn setUpContainerMountPoints(config: *ContainerOpts) void {
-    const uts: posix.utsname = posix.uname();
-    log.info(" [xxx-hostname: {s}] Setting mount point: {s}", .{ uts.nodename, config.mount_dir });
 
+    var buffer:[1000]u8 = undefined;
+    var w = std.fs.File.stdout().writer(&buffer);
+    const stdout = &w.interface;
+
+    const uts: posix.utsname = posix.uname();
+    stdout.print("info:  [hostname: {s}] Setting mount point: {s}, new_root: {s}\n", .{uts.nodename, config.mount_dir, config.new_root}) catch {};
+    stdout.flush() catch {};
+
+
+    stdout.print("info:  [hostname: {s}] Ensure new_root and parent don't share propgation\n", .{uts.nodename}) catch {};
+    stdout.flush() catch {};
     // https://man7.org/linux/man-pages/man2/pivot_root.2.html
     // ensure the `new_root` and its parent mount don't have shared propagation(which will
     // cause pivot_root to return an error) and prevent from propation of mount envents to
@@ -101,21 +109,19 @@ fn setUpContainerMountPoints(config: *ContainerOpts) void {
     }
 
     // ensure `new_root` is a mount point
-    log.info(" [hostname: {s}] Creating new_root: {s}", .{uts.nodename, config.new_root});
+    stdout.print("info:  [hostname: {s}] Creating new_root: {s}", .{uts.nodename, config.new_root}) catch {};
+    stdout.flush() catch {};
     const mode = 0o777;
     const res1 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.new_root.ptr), mode);
     const e1 = std.os.linux.E.init(res1);
     if (e1 != .SUCCESS) {
         log.err("Error creating the new_root: {s}, error: {}", .{config.new_root, e1});
+        return;
     }
 
-    //std.posix.mkdir(config.new_root, mode) catch |err| {
-    //    log.err("Error creating the new_root: {s}, error: {}", .{config.new_root, err});
-    //};
-
-    log.info(" [hostname: {s}] Mounting tmp directory: {s}", .{ uts.nodename, config.new_root });
-    //const mount_flags2 = std.os.linux.MS.BIND|std.os.linux.MS.PRIVATE;
-    const mount_flags2 = std.os.linux.MS.BIND;
+    stdout.print("info:  [hostname: {s}] Mounting tmp directory: {s}\n", .{ uts.nodename, config.new_root }) catch {};
+    stdout.flush() catch {};
+    const mount_flags2 = std.os.linux.MS.BIND|std.os.linux.MS.PRIVATE;
     const res2 = std.os.linux.syscall5(.mount, @intFromPtr(config.new_root.ptr), @intFromPtr(config.new_root.ptr), 0, mount_flags2, 0);
     const e2 = std.os.linux.E.init(res2);
     if (e2 != .SUCCESS) {
@@ -124,14 +130,16 @@ fn setUpContainerMountPoints(config: *ContainerOpts) void {
     }
 
     // create directory to which old root will be pivoted
-    log.info(" [hostname: {s}] creating put old: {s}", .{ uts.nodename, config.put_old });
+    stdout.print("info:  [hostname: {s}] creating put old: {s}\n", .{ uts.nodename, config.put_old }) catch {};
+    stdout.flush() catch {};
     const res3 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.put_old.ptr), mode);
     const e3 = std.os.linux.E.init(res3);
     if (e3 != .SUCCESS) {
         log.err("Error creating the pivot_root path: {s}, error: {}", .{config.put_old, e3});
     }
 
-    log.info(" [hostname: {s}] Pivoting root from: {s}, to: {s}", .{ uts.nodename, config.new_root, config.put_old });
+    stdout.print("info:  [hostname: {s}] Pivoting root from: {s}, to: {s} \n", .{ uts.nodename, config.new_root, config.put_old }) catch {};
+    stdout.flush() catch {};
 }
 
 fn child(arg: usize) callconv(.c) u8 {
@@ -149,7 +157,8 @@ fn generateChildProcess(config: ContainerOpts) !void {
     defer std.heap.page_allocator.free(stack_memory);
 
     const stack_ptr = @intFromPtr(stack_memory.ptr + stack_size);
-    const clone_flags = std.os.linux.CLONE.VM | std.os.linux.SIG.CHLD | std.os.linux.CLONE.NEWUTS;
+    //const clone_flags = std.os.linux.CLONE.VM | std.os.linux.SIG.CHLD | std.os.linux.CLONE.NEWUTS;
+    const clone_flags =  std.os.linux.SIG.CHLD | std.os.linux.CLONE.NEWNS | std.os.linux.CLONE.VM;
 
     const pid = std.os.linux.clone(child, stack_ptr, clone_flags, @intFromPtr(&config), null, 0, null);
     const e = std.os.linux.E.init(pid);
@@ -160,7 +169,13 @@ fn generateChildProcess(config: ContainerOpts) !void {
     const wait_flags = 0;
     var status: u32 = undefined;
     const trunc: u32 = @truncate(pid);
-    _ = std.os.linux.waitpid(@intCast(trunc), &status, wait_flags);
+    const res  = std.os.linux.waitpid(@intCast(trunc), &status, wait_flags);
+    const e2 = std.os.linux.E.init(res); 
+    if (e2 != .SUCCESS) {
+        log.err("Error in waitpid: {}", .{e2});
+        return;
+    }
+
     const uts: posix.utsname = posix.uname();
     log.info(" [hostname: {s}] Parent: child_pid: {}, pid: {}, ppid: {}", .{ uts.nodename, pid, std.os.linux.getpid(), std.os.linux.getppid() });
 }
