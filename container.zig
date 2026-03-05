@@ -84,7 +84,7 @@ fn setUpContainerConfiguration(config: *ContainerOpts) void {
 
 fn setUpContainerMountPoints(config: *ContainerOpts) void {
     const uts: posix.utsname = posix.uname();
-    log.info(" [hostname: {s}] Setting mount point: {s}", .{ uts.nodename, config.mount_dir });
+    log.info(" [xxx-hostname: {s}] Setting mount point: {s}", .{ uts.nodename, config.mount_dir });
 
     // https://man7.org/linux/man-pages/man2/pivot_root.2.html
     // ensure the `new_root` and its parent mount don't have shared propagation(which will
@@ -101,7 +101,8 @@ fn setUpContainerMountPoints(config: *ContainerOpts) void {
     }
 
     // ensure `new_root` is a mount point
-    const mode = 0o555;
+    log.info(" [hostname: {s}] Creating new_root: {s}", .{uts.nodename, config.new_root});
+    const mode = 0o777;
     const res1 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.new_root.ptr), mode);
     const e1 = std.os.linux.E.init(res1);
     if (e1 != .SUCCESS) {
@@ -355,8 +356,10 @@ fn parseArgs() !Args {
 
     var arg: Args = undefined;
     arg.debug = false;
+    var count:usize = 0;
 
     while (args.next()) |v| {
+        count += 1;
         var splits = std.mem.splitSequence(u8, v, "=");
         const key = splits.first();
         const val = splits.next().?;
@@ -373,6 +376,10 @@ fn parseArgs() !Args {
             log.err("{s}: {s}\n", .{ key, val });
             return error.UnknownArgument;
         }
+    }
+
+    if (count == 0) {
+        return error.MissingArgumentError;
     }
 
     return arg;

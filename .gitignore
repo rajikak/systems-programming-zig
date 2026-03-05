@@ -7,3 +7,4 @@ zig-out/
 a.out
 string
 container
+strace.txt
