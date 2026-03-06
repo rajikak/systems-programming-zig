@@ -91,7 +91,7 @@ fn setUpContainerMountPoints(config: *ContainerOpts) void {
     stdout.print("info:  [hostname: {s}] Setting mount point: {s}, new_root: {s}\n", .{uts.nodename, config.mount_dir, config.new_root}) catch {};
     stdout.flush() catch {};
 
-
+    buffer = undefined;
     stdout.print("info:  [hostname: {s}] Ensure new_root and parent don't share propgation\n", .{uts.nodename}) catch {};
     stdout.flush() catch {};
     // https://man7.org/linux/man-pages/man2/pivot_root.2.html
@@ -99,91 +99,93 @@ fn setUpContainerMountPoints(config: *ContainerOpts) void {
     // cause pivot_root to return an error) and prevent from propation of mount envents to
     // the initial mount namespace
 
-    const mount_flags = std.os.linux.MS.REC | std.os.linux.MS.PRIVATE;
+    //const mount_flags = std.os.linux.MS.REC | std.os.linux.MS.PRIVATE;
     const root = "/";
-    const res = std.os.linux.syscall5(.mount, 0, @intFromPtr(root.ptr), 0, mount_flags, 0);
-    const e = std.os.linux.E.init(res);
-    if (e != .SUCCESS) {
-        log.err("Error using mount: {}", .{e});
-        return;
-    }
+    //const res = std.os.linux.syscall5(.mount, 0, @intFromPtr(root.ptr), 0, mount_flags, 0);
+    //const e = std.os.linux.E.init(res);
+    //if (e != .SUCCESS) {
+    //    log.err("Error using mount: {}", .{e});
+    //    return;
+    //}
 
     // ensure `new_root` is a mount point
-    stdout.print("info:  [hostname: {s}] Creating new_root: {s}\n", .{uts.nodename, config.new_root}) catch {};
-    stdout.flush() catch {};
+    //buffer = undefined;
+    //stdout.print("info:  [hostname: {s}] Creating new_root: {s}\n", .{uts.nodename, config.new_root}) catch {};
+    //stdout.flush() catch {};
+    log.info("**********came here ", .{});
 
-    const mode = 0o777;
-    const res1 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.new_root.ptr), mode);
-    const e1 = std.os.linux.E.init(res1);
-    if (e1 != .SUCCESS) {
-        log.err("Error creating the new_root: {s}, error: {}", .{config.new_root, e1});
-        return;
-    }
+    //const mode = 0o777;
+    //const res1 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.new_root.ptr), mode);
+    //const e1 = std.os.linux.E.init(res1);
+    //if (e1 != .SUCCESS) {
+    //    log.err("Error creating the new_root: {s}, error: {}", .{config.new_root, e1});
+    //    return;
+    //}
 
     stdout.print("info:  [hostname: {s}] Mounting tmp directory: {s}\n", .{ uts.nodename, config.new_root }) catch {};
     stdout.flush() catch {};
 
     //const mount_flags2 = std.os.linux.MS.BIND|std.os.linux.MS.PRIVATE;
-    const mount_flags2 = std.os.linux.MS.BIND;
-    const res2 = std.os.linux.syscall5(.mount, @intFromPtr(config.new_root.ptr), @intFromPtr(config.new_root.ptr), 0, mount_flags2, 0);
-    const e2 = std.os.linux.E.init(res2);
-    if (e2 != .SUCCESS) {
-        log.err("Error using mount: {}", .{e2});
-        return;
-    }
+    //const mount_flags2 = std.os.linux.MS.BIND;
+    //const res2 = std.os.linux.syscall5(.mount, @intFromPtr(config.new_root.ptr), @intFromPtr(config.new_root.ptr), 0, mount_flags2, 0);
+    //const e2 = std.os.linux.E.init(res2);
+    //if (e2 != .SUCCESS) {
+    //    log.err("Error using mount: {}", .{e2});
+    //    return;
+    //}
 
     // create directory to which old root will be pivoted
     stdout.print("info:  [hostname: {s}] creating put old: {s}\n", .{ uts.nodename, config.put_old }) catch {};
     stdout.flush() catch {};
 
-    const res3 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.put_old.ptr), mode);
-    const e3 = std.os.linux.E.init(res3);
-    if (e3 != .SUCCESS) {
-        log.err("Error creating the pivot_root path: {s}, error: {}", .{config.put_old, e3});
-        return;
-    }
+    //const res3 = std.os.linux.syscall2(.mkdir, @intFromPtr(config.put_old.ptr), mode);
+    //const e3 = std.os.linux.E.init(res3);
+    //if (e3 != .SUCCESS) {
+    //    log.err("Error creating the pivot_root path: {s}, error: {}", .{config.put_old, e3});
+    //    return;
+    //}
 
     stdout.print("info:  [hostname: {s}] Pivoting root from: {s}, to: {s}\n", .{ uts.nodename, config.new_root, config.put_old }) catch {};
     stdout.flush() catch {};
 
-    const res4 = std.os.linux.syscall2(.pivot_root, @intFromPtr(config.new_root.ptr), @intFromPtr(config.put_old.ptr));
-    const e4 = std.os.linux.E.init(res4);
-    if (e4 != .SUCCESS) {
-        log.err("Error pivoting_root: {}", .{e4});
-        return;
-    }
+    //const res4 = std.os.linux.syscall2(.pivot_root, @intFromPtr(config.new_root.ptr), @intFromPtr(config.put_old.ptr));
+    //const e4 = std.os.linux.E.init(res4);
+    //if (e4 != .SUCCESS) {
+    //    log.err("Error pivoting_root: {}", .{e4});
+    //    return;
+    //}
 
     stdout.print("info:  [hostname: {s}] chdir root: {s}\n", .{ uts.nodename, root }) catch {};
     stdout.flush() catch {};
 
     // switch the current working directory to /
-    const res5 = std.os.linux.syscall1(.chdir, @intFromPtr(root.ptr));
-    const e5 = std.os.linux.E.init(res5);
-    if (e5 != .SUCCESS) {
-        log.err("Error during chdir: {}", .{e5});
-        return;
-    }
+    //const res5 = std.os.linux.syscall1(.chdir, @intFromPtr(root.ptr));
+    //const e5 = std.os.linux.E.init(res5);
+    //if (e5 != .SUCCESS) {
+    //    log.err("Error during chdir: {}", .{e5});
+    //    return;
+    //}
 
     stdout.print("info:  [hostname: {s}] Unmounting to oldroot: {s}\n", .{ uts.nodename, config.put_old }) catch {};
     stdout.flush() catch {};
 
     // unmout old root and remove the mount point
-    const umoun_flags = std.os.linux.MNT.DETACH;
-    const res6 = std.os.linux.syscall2(.umount2, @intFromPtr(config.put_old.ptr), umoun_flags);
-    const e6 = std.os.linux.E.init(res6);
-    if (e6 != .SUCCESS) {
-        log.err("Error during umount2: {}", .{e6});
-        return;
-    }
+    //const umoun_flags = std.os.linux.MNT.DETACH;
+    //const res6 = std.os.linux.syscall2(.umount2, @intFromPtr(config.put_old.ptr), umoun_flags);
+    //const e6 = std.os.linux.E.init(res6);
+    //if (e6 != .SUCCESS) {
+    //    log.err("Error during umount2: {}", .{e6});
+    //    return;
+    //}
 
     stdout.print("info:  [hostname: {s}] Unmounted oldroot: {s} and removed mount point\n", .{ uts.nodename, config.put_old }) catch {};
     stdout.flush() catch {};
-    const res7 = std.os.linux.syscall1(.rmdir, @intFromPtr(config.put_old.ptr));
-    const e7 = std.os.linux.E.init(res7);
-    if (e7 != .SUCCESS) {
-        log.err("Error during rmdir: {}", .{e7});
-        return;
-    }
+    //const res7 = std.os.linux.syscall1(.rmdir, @intFromPtr(config.put_old.ptr));
+    //const e7 = std.os.linux.E.init(res7);
+    //if (e7 != .SUCCESS) {
+    //    log.err("Error during rmdir: {}", .{e7});
+    //    return;
+    //}
 
     stdout.print("info:  [hostname: {s}] Unmounted oldroot: {s} and removed mount point\n", .{ uts.nodename, config.put_old }) catch {};
     stdout.flush() catch {};
@@ -205,7 +207,7 @@ fn generateChildProcess(config: ContainerOpts) !void {
 
     const stack_ptr = @intFromPtr(stack_memory.ptr + stack_size);
     //const clone_flags = std.os.linux.CLONE.VM | std.os.linux.SIG.CHLD | std.os.linux.CLONE.NEWUTS;
-    const clone_flags =  std.os.linux.SIG.CHLD | std.os.linux.CLONE.NEWNS | std.os.linux.CLONE.VM;
+    const clone_flags =  std.os.linux.SIG.CHLD | std.os.linux.CLONE.NEWNS | std.os.linux.CLONE.VM | std.os.linux.CLONE.NEWUTS;
 
     const pid = std.os.linux.clone(child, stack_ptr, clone_flags, @intFromPtr(&config), null, 0, null);
     const e = std.os.linux.E.init(pid);
