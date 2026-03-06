@@ -73,6 +73,21 @@ fn child(arg: usize) callconv(.c) u8 {
         std.debug.print("child: error in pivot_root: {}\n", .{e4});
         return 0;
     }
+    
+    const res5 = linux.syscall1(.chdir, @intFromPtr(root.ptr));
+    const e5 = linux.E.init(res5);
+    if (e5 != .SUCCESS) {
+        std.debug.print("child: error in chdir: {}\n", .{e5});
+        return 0;
+    }
+
+    const umount_flag = linux.MNT.DETACH;
+    const res6 = linux.syscall2(.umount2, @intFromPtr(put_old.ptr), umount_flag);
+    const e6 = linux.E.init(res6);
+    if (e6 != .SUCCESS) {
+        std.debug.print("child: error in umount2: {}\n", .{e6});
+        return 0;
+    }
 
     std.debug.print("child[{s}]: finished sucessfully, sending to parent: {s}\n", .{ uts2.nodename, input.buf });
     return 0;
