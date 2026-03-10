@@ -31,13 +31,13 @@ fn child(arg: usize) callconv(.c) u8 {
     std.debug.print("child[{s}]: starting child: args from parent: {s}\n", .{uts.nodename, input.buf});
     input.buf = "arguments received sucessfully"; // can send to parent with linux.CLONE.VM
 
-    std.debug.print("child[{s}]: setting new host_name to: {s}\n", .{uts.nodename, input.host_name});
-    const res = linux.syscall2(.sethostname, @intFromPtr(input.host_name.ptr), input.host_name.len);
-    const e = linux.E.init(res);
-    if (e != .SUCCESS) {
-        std.debug.print("child: error setting hostname: {}\n", .{e});
-        return 0;
-    }
+    //std.debug.print("child[{s}]: setting new host_name to: {s}\n", .{uts.nodename, input.host_name});
+    //const res = linux.syscall2(.sethostname, @intFromPtr(input.host_name.ptr), input.host_name.len);
+    //const e = linux.E.init(res);
+    //if (e != .SUCCESS) {
+    //    std.debug.print("child: error setting hostname: {}\n", .{e});
+    //    return 0;
+    //}
     const uts2: posix.utsname = posix.uname();
 
     const mount_flags = linux.MS.REC | linux.MS.PRIVATE;
@@ -49,7 +49,7 @@ fn child(arg: usize) callconv(.c) u8 {
         return 0;
     }
 
-    const new_root = "/tmp/clone";
+    const new_root = "/tmp/zigrootfs";
     const mount_flags2 = linux.MS.BIND;
     const res2 = linux.syscall5(.mount, @intFromPtr(new_root.ptr), @intFromPtr(new_root.ptr), 0, mount_flags2, 0);
     const e2 = linux.E.init(res2);
@@ -58,16 +58,17 @@ fn child(arg: usize) callconv(.c) u8 {
         return 0;
     }
 
-    const put_old = "/tmp/clone/oldrootfs";
+    const put_old = "/oldrootfs";
+    const path = "/tmp/zigrootfs/oldrootfs";
     const mode = 0o777; // make it writerable 
-    const res3 = linux.syscall2(.mkdir, @intFromPtr(put_old.ptr), mode);
+    const res3 = linux.syscall2(.mkdir, @intFromPtr(path.ptr), mode);
     const e3 = linux.E.init(res3);
     if (e3 != .SUCCESS) {
         std.debug.print("child: error in mkdir: {}\n", .{e3});
     }
 
-    std.debug.print("child[{s}] pivoting_root to: {s}, put_old: {s} \n", .{uts2.nodename, new_root, put_old});
-    const res4 = linux.syscall2(.pivot_root, @intFromPtr(new_root.ptr), @intFromPtr(put_old.ptr));
+    std.debug.print("child[{s}] pivoting_root to: {s}, path: {s}\n", .{uts2.nodename, new_root, path});
+    const res4 = linux.syscall2(.pivot_root, @intFromPtr(new_root.ptr), @intFromPtr(path.ptr));
     const e4 = linux.E.init(res4);
     if (e4 != .SUCCESS) {
         std.debug.print("child: error in pivot_root: {}\n", .{e4});
@@ -89,6 +90,22 @@ fn child(arg: usize) callconv(.c) u8 {
         return 0;
     }
 
+    const res7 = linux.syscall1(.rmdir, @intFromPtr(put_old));
+    const e7 = linux.E.init(res7);
+    if (e7 != .SUCCESS) {
+        std.debug.print("child: error in rmdir: {}\n", .{e7});
+        return 0;
+    }
+
+    const exec_path = "sh";
+    const execv_args = 0;
+    const res8 = linux.syscall2(.execve, @intFromPtr(exec_path.ptr), execv_args);
+    const e8 = linux.E.init(res8);
+    if (e8 != .SUCCESS) {
+        std.debug.print("child: error in execv: {}\n", .{e8});
+        return 0;
+    }
+
     std.debug.print("child[{s}]: finished sucessfully, sending to parent: {s}\n", .{ uts2.nodename, input.buf });
     return 0;
 }
@@ -101,7 +118,7 @@ pub fn main() !void {
 
     // linux.SIG.CHLD is required for waitpid
     // linux.CLONE.VM will make child to share parent process memory - hostname change will apply into parent as well
-    const clone_flags = linux.SIG.CHLD | linux.CLONE.NEWUTS | linux.CLONE.NEWNS;
+    const clone_flags = linux.SIG.CHLD | linux.CLONE.NEWNS;
 
     const uts: posix.utsname = posix.uname();
     std.debug.print("parent[{s}]: parent process starting clone...\n", .{uts.nodename});

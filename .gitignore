@@ -8,3 +8,5 @@ a.out
 string
 container
 strace.txt
+pivot_root
+zig_pivot_root

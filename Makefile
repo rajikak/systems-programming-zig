@@ -19,3 +19,13 @@ ns4:
 
 clean:
 	umount /tmp/anvilci/*;rm -rf /tmp/anvilci/*
+
+pr1:
+	gcc pivot_root.c -o pivot_root 
+	cp /home/ec2-user/busybox /tmp/rootfs
+	PS1='bbsh$ ' sudo ./pivot_root /tmp/rootfs/ /busybox sh;
+
+pr:
+	@zig build-exe pivot_root.zig --name zig_pivot_root -freference-trace=11
+	cp /home/ec2-user/busybox /tmp/zigrootfs
+	PS1='bbsh$ ' sudo ./zig_pivot_root /tmp/zigrootfs/ /busybox sh;
