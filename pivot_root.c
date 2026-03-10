@@ -55,7 +55,7 @@ static int child(void *arg) {
 		perror("rmdir");
 	}
 
-	printf("new_root: %s, path: %s, args[1]: %s\n", new_root, path, args[1]);
+	printf("new_root: %s, path: %s, args[1]: %s, %s\n", new_root, path, args[1], &args[1]);
 	execv(args[1], &args[1]);
 	err(EXIT_FAILURE, "execv");
 }

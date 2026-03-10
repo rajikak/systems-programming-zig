@@ -61,10 +61,13 @@ fn child(arg: usize) callconv(.c) u8 {
     const put_old = "/oldrootfs";
     const path = "/tmp/zigrootfs/oldrootfs";
     const mode = 0o777; // make it writerable 
-    const res3 = linux.syscall2(.mkdir, @intFromPtr(path.ptr), mode);
+    //const res3 = linux.syscall2(.mkdir, @intFromPtr(path.ptr), mode);
+    const res3 = linux.mkdir(path, mode);
     const e3 = linux.E.init(res3);
     if (e3 != .SUCCESS) {
         std.debug.print("child: error in mkdir: {}\n", .{e3});
+    } else {
+        std.debug.print("child: mkdir was sucessful: {}\n", .{e3});
     }
 
     std.debug.print("child[{s}] pivoting_root to: {s}, path: {s}\n", .{uts2.nodename, new_root, path});
@@ -97,15 +100,19 @@ fn child(arg: usize) callconv(.c) u8 {
         return 0;
     }
 
-    const exec_path = "sh";
-    const execv_args = 0;
-    const res8 = linux.syscall2(.execve, @intFromPtr(exec_path.ptr), execv_args);
+    const exec_path = "/busybox";
+    //const exec_args:[3:null]  ?[*:0]const u8 =  .{"ls", "-alh",  null};
+    const exec_args:[2:null]  ?[*:0]const u8 =  .{"sh", null};
+    const exec_env:[1:null]  ?[*:0]const u8  = .{null}; 
+
+    const res8 =linux.syscall3(.execve, @intFromPtr(exec_path.ptr), @intFromPtr(&exec_args), @intFromPtr(&exec_env));
     const e8 = linux.E.init(res8);
     if (e8 != .SUCCESS) {
         std.debug.print("child: error in execv: {}\n", .{e8});
         return 0;
     }
 
+    // won't come here -- execve replaces the program image with supplied program
     std.debug.print("child[{s}]: finished sucessfully, sending to parent: {s}\n", .{ uts2.nodename, input.buf });
     return 0;
 }

@@ -8,6 +8,9 @@ strace:
 clone:
 	@zig run clone5.zig -freference-trace=11
 
+clone2:
+	@zig build-exe clone5.zig;strace --sumary-only --follow-clone -f ./clone5
+
 ns:
 	zig run -I . namespace2.zig -lc -D_GNU_SOURCE
 
@@ -28,4 +31,11 @@ pr1:
 pr:
 	@zig build-exe pivot_root.zig --name zig_pivot_root -freference-trace=11
 	cp /home/ec2-user/busybox /tmp/zigrootfs
-	PS1='bbsh$ ' sudo ./zig_pivot_root /tmp/zigrootfs/ /busybox sh;
+	PS1='bbsh$ ' sudo ./zig_pivot_root /tmp/zigrootfs/ /busybox s
+	# exeucute in the container
+	#PATH=/
+	#busybox ln busybox ln
+	#ln busybox ls
+	#ln busybox echo
+	#ls
+	#echo 'hello world'
